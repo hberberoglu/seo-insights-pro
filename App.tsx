@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ViewType, AppState, SummaryStats, PageStats, QueryStats, BQConfig } from './types';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { ViewType, AppState, SummaryStats, PageStats, QueryStats, BQConfig, ComparisonItem } from './types';
 import { DataService } from './services/dataService';
 import { StatsGrid } from './components/StatsGrid';
 import { DataTable } from './components/DataTable';
 import { InsightBox } from './components/InsightBox';
 import { SettingsView } from './components/SettingsView';
+import { ComparisonView } from './components/ComparisonView';
+import { ComparisonDetailView } from './components/ComparisonDetailView';
 
 const DEFAULT_CONFIG: BQConfig = {
   projectId: '',
@@ -19,7 +21,6 @@ const DEFAULT_CONFIG: BQConfig = {
 const App: React.FC = () => {
   const savedConfig = localStorage.getItem('seo_insight_bq_config');
   const initialConfig = savedConfig ? JSON.parse(savedConfig) : DEFAULT_CONFIG;
-  // Ensure default for legacy saved configs
   if (initialConfig && !initialConfig.aiLanguage) initialConfig.aiLanguage = 'tr';
 
   const [state, setState] = useState<AppState>({
@@ -42,9 +43,57 @@ const App: React.FC = () => {
   } | null>(null);
 
   const [detailData, setDetailData] = useState<any[]>([]);
+  const [comparisonData, setComparisonData] = useState<ComparisonItem[]>([]);
+  const [comparisonType, setComparisonType] = useState<'url' | 'query'>('query');
+  
+  // URL details local state
+  const [editableUrl, setEditableUrl] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ col: string; dir: 'ASC' | 'DESC' }>({ col: 'clicks', dir: 'DESC' });
+
+  // Sync editableUrl when selectedUrl changes from navigation
+  useEffect(() => {
+    if (state.selectedUrl) {
+      setEditableUrl(state.selectedUrl);
+    } else if (state.view === 'pageDetail') {
+      setEditableUrl('');
+      setDetailData([]);
+    }
+  }, [state.selectedUrl, state.view]);
+
+  // Reset sorting when switching views
+  useEffect(() => {
+    setSortConfig({ col: 'clicks', dir: 'DESC' });
+  }, [state.view]);
+
+  // Calculate Comparison Period
+  const comparisonPeriod = useMemo(() => {
+    const s = new Date(state.startDate);
+    const e = new Date(state.endDate);
+    const diffTime = Math.abs(e.getTime() - s.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    const prevEnd = new Date(s);
+    prevEnd.setDate(prevEnd.getDate() - 1);
+    const prevStart = new Date(prevEnd);
+    prevStart.setDate(prevStart.getDate() - (diffDays - 1));
+
+    return {
+      active: { start: state.startDate, end: state.endDate },
+      prev: { 
+        start: prevStart.toISOString().split('T')[0], 
+        end: prevEnd.toISOString().split('T')[0] 
+      }
+    };
+  }, [state.startDate, state.endDate]);
 
   const loadData = useCallback(async () => {
     if (state.view === 'settings' || !state.token || !state.config.projectId) return;
+
+    // Don't trigger loading if we're in pageDetail but no URL is selected yet
+    if (state.view === 'pageDetail' && !state.selectedUrl) {
+      setDetailData([]);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -52,8 +101,27 @@ const App: React.FC = () => {
       if (state.view === 'overview') {
         const result = await DataService.getOverview(state.config, state.token, state.startDate, state.endDate);
         setData(result);
+      } else if (state.view === 'comparison' || state.view === 'comparisonDetail') {
+        const result = await DataService.getComparisonData(
+          state.config, 
+          state.token, 
+          comparisonType,
+          comparisonPeriod.active.start, 
+          comparisonPeriod.active.end, 
+          comparisonPeriod.prev.start, 
+          comparisonPeriod.prev.end
+        );
+        setComparisonData(result);
       } else if (state.view === 'pageDetail' && state.selectedUrl) {
-        const result = await DataService.getUrlDetails(state.config, state.token, state.selectedUrl, state.startDate, state.endDate);
+        const result = await DataService.getUrlDetails(
+          state.config, 
+          state.token, 
+          state.selectedUrl, 
+          state.startDate, 
+          state.endDate,
+          sortConfig.col,
+          sortConfig.dir
+        );
         setDetailData(result);
       } else if (state.view === 'queryDetail' && state.selectedQuery) {
         const result = await DataService.getQueryDetails(state.config, state.token, state.selectedQuery, state.startDate, state.endDate);
@@ -68,7 +136,7 @@ const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [state.view, state.startDate, state.endDate, state.selectedUrl, state.selectedQuery, state.token, state.config]);
+  }, [state.view, state.startDate, state.endDate, state.selectedUrl, state.selectedQuery, state.token, state.config, comparisonPeriod, sortConfig, comparisonType]);
 
   useEffect(() => {
     loadData();
@@ -90,6 +158,18 @@ const App: React.FC = () => {
 
   const handleQueryClick = (query: string) => {
     setState(prev => ({ ...prev, view: 'queryDetail', selectedQuery: query }));
+  };
+
+  const handleFetchUrl = () => {
+    if (!editableUrl) return;
+    setState(prev => ({ ...prev, selectedUrl: editableUrl, view: 'pageDetail' }));
+  };
+
+  const toggleSort = (column: string) => {
+    setSortConfig(prev => ({
+      col: column,
+      dir: prev.col === column && prev.dir === 'DESC' ? 'ASC' : 'DESC'
+    }));
   };
 
   const handleConfigUpdate = (newConfig: BQConfig) => {
@@ -162,7 +242,7 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div 
             className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => setState(prev => ({ ...prev, view: 'overview' }))}
+            onClick={() => setState(prev => ({ ...prev, view: 'overview', selectedUrl: undefined, selectedQuery: undefined }))}
           >
             <div className="bg-indigo-600 text-white p-2.5 rounded-xl shadow-lg shadow-indigo-200 group-hover:scale-105 transition-transform">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -250,7 +330,7 @@ const App: React.FC = () => {
             )}
 
             <button
-              onClick={() => setState(prev => ({ ...prev, view: state.view === 'settings' ? 'overview' : 'settings' }))}
+              onClick={() => setState(prev => ({ ...prev, view: 'settings' }))}
               className={`p-2.5 rounded-xl border transition-all duration-200 ${state.view === 'settings' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-inner' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:shadow-md'}`}
               title="Ayarlar"
             >
@@ -278,18 +358,43 @@ const App: React.FC = () => {
         )}
 
         {state.token && state.view !== 'settings' && (
-          <nav className="flex items-center gap-2 mb-8 text-xs font-bold text-slate-400">
+          <nav className="flex items-center gap-6 mb-8 text-xs font-black text-slate-400">
             <button 
-              onClick={() => setState(prev => ({ ...prev, view: 'overview' }))}
-              className={`hover:text-indigo-600 uppercase tracking-widest transition-colors ${state.view === 'overview' ? 'text-indigo-600 underline decoration-2 underline-offset-4' : ''}`}
+              onClick={() => setState(prev => ({ ...prev, view: 'overview', selectedUrl: undefined, selectedQuery: undefined }))}
+              className={`hover:text-indigo-600 uppercase tracking-[0.2em] transition-all relative py-1 ${state.view === 'overview' ? 'text-indigo-600' : ''}`}
             >
               Genel Bakış
+              {state.view === 'overview' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full animate-in slide-in-from-left duration-300"></div>}
             </button>
-            {state.view !== 'overview' && (
+            <button 
+              onClick={() => setState(prev => ({ ...prev, view: 'comparison', selectedUrl: undefined, selectedQuery: undefined }))}
+              className={`hover:text-indigo-600 uppercase tracking-[0.2em] transition-all relative py-1 ${state.view === 'comparison' || state.view === 'comparisonDetail' ? 'text-indigo-600' : ''}`}
+            >
+              Yükselenler/Düşenler
+              {(state.view === 'comparison' || state.view === 'comparisonDetail') && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full animate-in slide-in-from-left duration-300"></div>}
+            </button>
+            <button 
+              onClick={() => setState(prev => ({ ...prev, view: 'pageDetail', selectedUrl: undefined, selectedQuery: undefined }))}
+              className={`hover:text-indigo-600 uppercase tracking-[0.2em] transition-all relative py-1 ${state.view === 'pageDetail' ? 'text-indigo-600' : ''}`}
+            >
+              Sayfa Analizi
+              {state.view === 'pageDetail' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full animate-in slide-in-from-left duration-300"></div>}
+            </button>
+            
+            {(state.view === 'queryDetail') && (
               <>
                 <span className="text-slate-200">/</span>
                 <span className="truncate max-w-[200px] text-slate-900 bg-white px-2 py-1 rounded-md border border-slate-100 shadow-sm">
-                  {state.view === 'pageDetail' ? `Sayfa: ${state.selectedUrl}` : `Sorgu: ${state.selectedQuery}`}
+                  Sorgu: {state.selectedQuery}
+                </span>
+              </>
+            )}
+            
+            {state.view === 'comparisonDetail' && state.comparisonDetail && (
+              <>
+                <span className="text-slate-200">/</span>
+                <span className="text-slate-900 bg-white px-2 py-1 rounded-md border border-slate-100 shadow-sm uppercase tracking-widest">
+                  Detaylı Liste
                 </span>
               </>
             )}
@@ -370,30 +475,131 @@ const App: React.FC = () => {
                 </section>
               )}
 
+              {state.view === 'comparison' && (
+                <ComparisonView 
+                  data={comparisonData} 
+                  type={comparisonType}
+                  onTypeChange={(t) => setComparisonType(t)}
+                  activeRange={comparisonPeriod.active} 
+                  prevRange={comparisonPeriod.prev} 
+                  onItemClick={(key) => comparisonType === 'url' ? handlePageClick(key) : handleQueryClick(key)}
+                  onViewDetail={(type, metric, trend) => setState(prev => ({ ...prev, view: 'comparisonDetail', comparisonDetail: { type, metric, trend } }))}
+                />
+              )}
+              
+              {state.view === 'comparisonDetail' && state.comparisonDetail && (
+                <ComparisonDetailView 
+                  data={comparisonData}
+                  type={state.comparisonDetail.type}
+                  metric={state.comparisonDetail.metric}
+                  trend={state.comparisonDetail.trend}
+                  onBack={() => setState(prev => ({ ...prev, view: 'comparison' }))}
+                  onItemClick={(key) => state.comparisonDetail?.type === 'url' ? handlePageClick(key) : handleQueryClick(key)}
+                />
+              )}
+
               {state.view === 'pageDetail' && (
                 <section className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <InsightBox context={`URL: ${state.selectedUrl}`} data={detailData} language={state.config.aiLanguage} />
-                  <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm mb-10">
-                    <div className="mb-10 flex items-start justify-between">
-                      <div className="max-w-3xl">
-                        <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-4">Sayfa Performans Analizi</h2>
-                        <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-slate-600 text-xs font-bold font-mono overflow-hidden group hover:bg-white hover:border-indigo-200 transition-all">
-                          <svg className="w-5 h-5 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                          <span className="truncate">{state.selectedUrl}</span>
+                  {state.selectedUrl && detailData.length > 0 && (
+                    <InsightBox context={`URL: ${state.selectedUrl}`} data={detailData} language={state.config.aiLanguage} />
+                  )}
+                  
+                  <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm mb-10 w-full">
+                    <div className="mb-10 w-full">
+                      <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Sayfa Performans Analizi</h2>
+                        {state.selectedUrl && (
+                          <div className="px-4 py-1.5 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase rounded-full border border-indigo-100">
+                            Aktif Sayfa Modu
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-4 w-full">
+                        <div className="relative flex-grow group">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-indigo-400">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                          </div>
+                          <input 
+                            type="text" 
+                            placeholder="Analiz etmek istediğiniz URL'i girin..."
+                            value={editableUrl}
+                            onChange={(e) => setEditableUrl(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleFetchUrl()}
+                            className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-mono text-sm focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all shadow-inner placeholder:text-slate-400"
+                          />
+                          {state.selectedUrl && (
+                            <a 
+                              href={state.selectedUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-indigo-600 transition-colors"
+                              title="Yeni sekmede aç"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            </a>
+                          )}
                         </div>
+                        <button 
+                          onClick={handleFetchUrl}
+                          className="px-8 py-4 bg-indigo-600 text-white font-black text-sm uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex-shrink-0"
+                        >
+                          Getir
+                        </button>
                       </div>
                     </div>
-                    <DataTable<QueryStats> 
-                      data={detailData}
-                      columns={[
-                        { header: 'ARAMA SORGUSU', accessor: (item) => <span className="text-indigo-600 font-black">{item.query}</span> },
-                        { header: 'TIKLAMA', accessor: (item) => item.clicks.toLocaleString() },
-                        { header: 'GÖSTERİM', accessor: (item) => item.impressions.toLocaleString() },
-                        { header: 'CTR', accessor: (item) => <span className="font-bold">{item.ctr.toFixed(2)}%</span> },
-                        { header: 'AVG. POS.', accessor: (item) => <span className="font-black bg-slate-50 px-3 py-1 rounded-lg">{item.avgPosition.toFixed(1)}</span> },
-                      ]}
-                      onRowClick={(item) => handleQueryClick(item.query)}
-                    />
+
+                    {!state.selectedUrl ? (
+                      <div className="py-24 text-center">
+                        <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
+                          <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-xl font-black text-slate-400">Veri Bekleniyor</h3>
+                        <p className="text-slate-400 max-w-xs mx-auto mt-2">Yukarıdaki kutucuğa bir URL girerek BigQuery analizini hemen başlatabilirsiniz.</p>
+                      </div>
+                    ) : (
+                      <DataTable<QueryStats> 
+                        data={detailData}
+                        columns={[
+                          { header: 'ARAMA SORGUSU', accessor: (item) => <span className="text-indigo-600 font-black">{item.query}</span> },
+                          { 
+                            header: (
+                              <button onClick={() => toggleSort('clicks')} className="flex items-center gap-1 hover:text-indigo-600 transition-colors uppercase">
+                                TIKLAMA {sortConfig.col === 'clicks' && (sortConfig.dir === 'DESC' ? '↓' : '↑')}
+                              </button>
+                            ) as any, 
+                            accessor: (item) => item.clicks.toLocaleString() 
+                          },
+                          { 
+                            header: (
+                              <button onClick={() => toggleSort('impressions')} className="flex items-center gap-1 hover:text-indigo-600 transition-colors uppercase">
+                                GÖSTERİM {sortConfig.col === 'impressions' && (sortConfig.dir === 'DESC' ? '↓' : '↑')}
+                              </button>
+                            ) as any, 
+                            accessor: (item) => item.impressions.toLocaleString() 
+                          },
+                          { 
+                            header: (
+                              <button onClick={() => toggleSort('ctr')} className="flex items-center gap-1 hover:text-indigo-600 transition-colors uppercase">
+                                CTR {sortConfig.col === 'ctr' && (sortConfig.dir === 'DESC' ? '↓' : '↑')}
+                              </button>
+                            ) as any, 
+                            accessor: (item) => <span className="font-bold">{item.ctr.toFixed(2)}%</span> 
+                          },
+                          { 
+                            header: (
+                              <button onClick={() => toggleSort('avgPosition')} className="flex items-center gap-1 hover:text-indigo-600 transition-colors uppercase">
+                                AVG. POS. {sortConfig.col === 'avgPosition' && (sortConfig.dir === 'DESC' ? '↓' : '↑')}
+                              </button>
+                            ) as any, 
+                            accessor: (item) => <span className="font-black bg-slate-50 px-3 py-1 rounded-lg">{item.avgPosition.toFixed(1)}</span> 
+                          },
+                        ]}
+                        onRowClick={(item) => handleQueryClick(item.query)}
+                      />
+                    )}
                   </div>
                 </section>
               )}
