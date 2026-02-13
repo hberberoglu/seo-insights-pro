@@ -49,21 +49,21 @@ export class DataService {
     const tablePath = `\`${config.projectId}.${config.datasetId}.${config.tableId}\``;
     
     const pageSql = `
-      SELECT url, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_top_position / impressions) as avgPosition
+      SELECT url, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_position / impressions) as avgPosition
       FROM ${tablePath}
       WHERE data_date BETWEEN '${start}' AND '${end}'
       GROUP BY url ORDER BY clicks DESC LIMIT 50
     `;
 
     const querySql = `
-      SELECT query, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_top_position / impressions) as avgPosition, (SUM(clicks) / SUM(impressions)) * 100 as ctr
+      SELECT query, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_position / impressions) as avgPosition, (SUM(clicks) / SUM(impressions)) * 100 as ctr
       FROM ${tablePath}
       WHERE data_date BETWEEN '${start}' AND '${end}'
       GROUP BY query ORDER BY clicks DESC LIMIT 50
     `;
 
     const summarySql = `
-      SELECT SUM(clicks) as totalClicks, SUM(impressions) as totalImpressions, (SUM(clicks) / SUM(impressions)) * 100 as avgCtr, AVG(sum_top_position / impressions) as avgPosition
+      SELECT SUM(clicks) as totalClicks, SUM(impressions) as totalImpressions, (SUM(clicks) / SUM(impressions)) * 100 as avgCtr, AVG(sum_position / impressions) as avgPosition
       FROM ${tablePath}
       WHERE data_date BETWEEN '${start}' AND '${end}'
     `;
@@ -84,7 +84,7 @@ export class DataService {
   static async getUrlDetails(config: BQConfig, token: string, url: string, start: string, end: string): Promise<QueryStats[]> {
     const tablePath = `\`${config.projectId}.${config.datasetId}.${config.tableId}\``;
     const sql = `
-      SELECT query, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_top_position / impressions) as avgPosition, (SUM(clicks) / SUM(impressions)) * 100 as ctr
+      SELECT query, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_position / impressions) as avgPosition, (SUM(clicks) / SUM(impressions)) * 100 as ctr
       FROM ${tablePath}
       WHERE url = '${url}' AND data_date BETWEEN '${start}' AND '${end}'
       GROUP BY query ORDER BY clicks DESC LIMIT 100
@@ -95,7 +95,7 @@ export class DataService {
   static async getQueryDetails(config: BQConfig, token: string, query: string, start: string, end: string): Promise<PageStats[]> {
     const tablePath = `\`${config.projectId}.${config.datasetId}.${config.tableId}\``;
     const sql = `
-      SELECT url, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_top_position / impressions) as avgPosition, (SUM(clicks) / SUM(impressions)) * 100 as ctr
+      SELECT url, SUM(clicks) as clicks, SUM(impressions) as impressions, AVG(sum_position / impressions) as avgPosition, (SUM(clicks) / SUM(impressions)) * 100 as ctr
       FROM ${tablePath}
       WHERE query = '${query}' AND data_date BETWEEN '${start}' AND '${end}'
       GROUP BY url ORDER BY clicks DESC LIMIT 100
