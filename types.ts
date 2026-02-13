@@ -37,6 +37,7 @@ export interface BQConfig {
   datasetId: string;
   tableId: string;
   location: string;
+  clientId: string;
 }
 
 export type ViewType = 'overview' | 'pageDetail' | 'queryDetail' | 'settings';
@@ -48,4 +49,5 @@ export interface AppState {
   startDate: string;
   endDate: string;
   config: BQConfig;
+  token?: string;
 }
