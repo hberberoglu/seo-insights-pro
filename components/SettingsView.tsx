@@ -13,7 +13,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ config, token, onSav
   const [localConfig, setLocalConfig] = useState<BQConfig>(config);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setLocalConfig(prev => ({ ...prev, [name]: value }));
   };
@@ -105,6 +105,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ config, token, onSav
                 onChange={handleChange}
                 className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-bold focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all"
               />
+            </div>
+            
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">AI Analiz Dili</label>
+              <div className="flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => setLocalConfig(prev => ({ ...prev, aiLanguage: 'tr' }))}
+                  className={`flex-1 py-3.5 px-5 rounded-2xl font-bold border-2 transition-all ${localConfig.aiLanguage === 'tr' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
+                >
+                  Türkçe
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalConfig(prev => ({ ...prev, aiLanguage: 'en' }))}
+                  className={`flex-1 py-3.5 px-5 rounded-2xl font-bold border-2 transition-all ${localConfig.aiLanguage === 'en' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
+                >
+                  İngilizce
+                </button>
+              </div>
             </div>
           </div>
 

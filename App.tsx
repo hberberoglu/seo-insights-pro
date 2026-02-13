@@ -12,12 +12,15 @@ const DEFAULT_CONFIG: BQConfig = {
   datasetId: 'searchconsole',
   tableId: 'searchdata_url_impression',
   location: 'US',
-  clientId: ''
+  clientId: '',
+  aiLanguage: 'tr'
 };
 
 const App: React.FC = () => {
   const savedConfig = localStorage.getItem('seo_insight_bq_config');
   const initialConfig = savedConfig ? JSON.parse(savedConfig) : DEFAULT_CONFIG;
+  // Ensure default for legacy saved configs
+  if (initialConfig && !initialConfig.aiLanguage) initialConfig.aiLanguage = 'tr';
 
   const [state, setState] = useState<AppState>({
     view: initialConfig.projectId ? 'overview' : 'settings',
@@ -369,7 +372,7 @@ const App: React.FC = () => {
 
               {state.view === 'pageDetail' && (
                 <section className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <InsightBox context={`URL: ${state.selectedUrl}`} data={detailData} />
+                  <InsightBox context={`URL: ${state.selectedUrl}`} data={detailData} language={state.config.aiLanguage} />
                   <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm mb-10">
                     <div className="mb-10 flex items-start justify-between">
                       <div className="max-w-3xl">
@@ -397,7 +400,7 @@ const App: React.FC = () => {
 
               {state.view === 'queryDetail' && (
                 <section className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <InsightBox context={`Sorgu: ${state.selectedQuery}`} data={detailData} />
+                  <InsightBox context={`Sorgu: ${state.selectedQuery}`} data={detailData} language={state.config.aiLanguage} />
                   <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm mb-10">
                     <div className="mb-10">
                       <p className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.3em] mb-2">Arama Niyeti Analizi</p>

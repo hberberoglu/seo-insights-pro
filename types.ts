@@ -38,6 +38,7 @@ export interface BQConfig {
   tableId: string;
   location: string;
   clientId: string;
+  aiLanguage: 'en' | 'tr';
 }
 
 export type ViewType = 'overview' | 'pageDetail' | 'queryDetail' | 'settings';

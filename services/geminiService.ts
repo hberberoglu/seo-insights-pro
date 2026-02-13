@@ -2,11 +2,17 @@
 import { GoogleGenAI } from "@google/genai";
 
 export class GeminiService {
-  // Initializing ai instance inside the static method to ensure the most current API key from environment is used.
-  static async analyzeData(context: string, data: any[]): Promise<string> {
+  static async analyzeData(context: string, data: any[], language: 'en' | 'tr' = 'tr'): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const languageInstruction = language === 'tr' 
+      ? "Lütfen analizi Türkçe dilinde yap." 
+      : "Please perform the analysis in English.";
+
     const prompt = `
       Analyze the following SEO performance data for: ${context}.
+      ${languageInstruction}
+      
       Identify:
       1. Top performing assets.
       2. Underperforming items with high impressions but low clicks (CTR issues).
@@ -24,11 +30,12 @@ export class GeminiService {
         model: 'gemini-3-flash-preview',
         contents: prompt,
       });
-      // response.text is a property, not a method.
-      return response.text || "No insights available.";
+      return response.text || (language === 'tr' ? "Analiz sonucu bulunamadı." : "No insights available.");
     } catch (error) {
       console.error("Gemini Analysis Error:", error);
-      return "Could not generate AI insights at this time.";
+      return language === 'tr' 
+        ? "Şu anda AI analizleri oluşturulamadı." 
+        : "Could not generate AI insights at this time.";
     }
   }
 }
