@@ -1,0 +1,5 @@
+{
+  "name": "SEO Insight Pro",
+  "description": "Advanced SEO analysis tool for Google Search Console data stored in BigQuery, featuring deep dives into URL and query performance with AI-powered insights.",
+  "requestFramePermissions": []
+}
