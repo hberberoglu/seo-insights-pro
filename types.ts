@@ -9,11 +9,17 @@ export interface GSCData {
   position: number;
 }
 
-export interface SummaryStats {
-  totalClicks: number;
-  totalImpressions: number;
-  avgCtr: number;
+export interface MetricSet {
+  clicks: number;
+  impressions: number;
+  ctr: number;
   avgPosition: number;
+}
+
+export interface SummaryStats {
+  current: MetricSet;
+  previous: MetricSet;
+  prevYear: MetricSet;
 }
 
 export interface PageStats {
